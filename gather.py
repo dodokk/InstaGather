@@ -4,7 +4,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-from time import sleep
+from time import sleep, time
 import random
 import sys, json, re, os, io, requests
 from PIL import ImageGrab
@@ -14,11 +14,7 @@ from datetime import datetime
 options = webdriver.ChromeOptions()
 driver_path = r"../chromedriver.exe"
 
-PROFILE_PATH = "C:\\Users\\{0}\\AppData\\Local\\Google\\Chrome\\User Data".format(os.environ.get("USERNAME"))
-
-userdata_dir = 'UserData'
-os.makedirs(userdata_dir, exist_ok=True)
-options.add_argument('--user-data-dir=' + userdata_dir)
+# options.add_argument('--headless')
 
 
 # 操作可能なChromeを立ち上げる
@@ -62,6 +58,10 @@ def gather_tags(fname):
     with open(fname, "r") as f:
         keywords = f.readlines()
 
+    driver.get("https://www.instagram.com/explore/tags/a")
+    driver.set_page_load_timeout(10)
+    sleep(2)
+
     taglist = []
     for keyword in keywords:
         driver.find_element_by_xpath('//input[@type="text"]').send_keys(keyword)
@@ -102,7 +102,6 @@ def id_get():
                 sleep(3)
             else:
                 break
-    WebDriverWait(driver, 3)
     sleep(1)
     scrolls = driver.find_elements_by_xpath('//div[contains(@style, "flex-direction")]/div[11]')
     if len(scrolls) != 0:
@@ -110,7 +109,6 @@ def id_get():
         actions = ActionChains(driver)
         actions.move_to_element(scroll)
         actions.perform()
-        WebDriverWait(driver, 3)
         sleep(1)
     else:
         pass
@@ -125,6 +123,14 @@ def id_get():
 
 # idから個人ページの情報をjsonにまとめる
 def user_detail(id, num=20):
+    path = "./users/" + id + ".json"
+    if not os.path.exists(path):
+        pass
+    elif (os.path.getctime(path) + 8640) > time():
+        pass
+    else:
+        return
+
     driver.get("https://www.instagram.com/{0}/?hl=ja".format(id))
     driver.set_page_load_timeout(10)
 
@@ -135,7 +141,7 @@ def user_detail(id, num=20):
         name = ""
     nums = driver.find_elements_by_xpath('//ul/li/*/span')
     post = num_to_int(nums[0].text)
-    byfollow = num_to_int(nums[1].text)
+    follower = num_to_int(nums[1].text)
     follow = num_to_int(nums[2].text)
     intros = driver.find_elements_by_xpath("//main/div/div[1]/span")
     section = driver.find_elements_by_xpath("//section/div/span")
@@ -146,21 +152,18 @@ def user_detail(id, num=20):
     else:
         intro = ""
 
-    posts_detail = {"id": id, "name": name, "post": post, "byfollow": byfollow, "follow": follow, "intro": intro, "posts": []}
+    posts_detail = {"id": id, "name": name, "post": post, "follower": follower, "follow": follow, "intro": intro, "posts": []}
 
     posts = driver.find_elements_by_xpath('//div[a[contains(@href, "/p/")]]')
     if len(posts) > 0:
         posts[0].click()
     else:
-        with open(id + '.json', 'w') as f:
-            json.dump(posts_detail, f, indent=2, ensure_ascii=False)
-
         return posts_detail
 
     for i in range(num):
         post_info = {}
         try:
-            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, '//time[1]')))
+            WebDriverWait(driver, 6).until(EC.presence_of_element_located((By.XPATH, '//time[1]')))
             sleep(0.2)
         except:
             next = driver.find_elements_by_xpath('//a[text()="次へ"]')
@@ -227,7 +230,7 @@ def user_detail(id, num=20):
         else:
             break
 
-    with open("./users/" + id + '.json', 'w', encoding="utf-8") as f:
+    with open(path, 'w', encoding="utf-8") as f:
         json.dump(posts_detail, f, indent=2, ensure_ascii=False)
 
     return posts_detail
@@ -263,8 +266,15 @@ def catch_users(fname):
 
             posts = driver.find_elements_by_xpath('//div[div[img[contains(@alt, "画像")]]]')
             if len(posts) > 0:
-                posts[i].click()
-                WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, '//*[@aria-label="保存する"]')))
+                for i in range(5):
+                    try:
+                        posts[i].click()
+                        WebDriverWait(driver, 6).until(EC.presence_of_element_located((By.XPATH, '//*[@aria-label="保存する"]')))
+                        break
+                    except:
+                        driver.back()
+                        sleep(0.2)
+                        continue
 
                 # ↓--------この間にクローリング時の処理---------↓
 
